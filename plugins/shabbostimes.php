@@ -28,6 +28,7 @@ class shabbostimes extends phplistPlugin
     "shabbostimes_zipcode" => array (
       'value' => "",
       'description' => "Zipcode to use for zmanim",
+      'type' => "text",
       'allowempty' => 0,
       "max" => 1000,
       "min" => 0,
