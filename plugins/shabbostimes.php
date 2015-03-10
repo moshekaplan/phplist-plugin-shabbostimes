@@ -22,7 +22,7 @@ class shabbostimes extends phplistPlugin
 {
   public $name = "ShabbosTimes plugin for phpList";
   public $coderoot = "shabbostimes/";
-  public $version = "0.2";
+  public $version = "0.3";
   public $description = 'Replaces [CANDLELIGHTING] and [PARSHA] with the candlelighting and parsha';
   public $settings = array(
     "shabbostimes_zipcode" => array (
@@ -74,7 +74,7 @@ class shabbostimes extends phplistPlugin
         $zipcode = getConfig('shabbostimes_zipcode');
         if(!$zipcode){
           // Error, but we can't do anything.
-          return $msg;
+          return $content;
         }
         
         $hebcal_data = get_hebcal_data($zipcode);
