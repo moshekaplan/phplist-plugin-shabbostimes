@@ -85,11 +85,13 @@ class shabbostimes extends phplistPlugin
         foreach ($hebcal_data["items"] as $item) {
             if ($item['category'] == 'parashat'){
                 $parsha_string = $item["title"];
-                $parsha = explode('Parshas ', $parsha_string, 2)[1];
+                $parsha__exploded = explode('Parshas ', $parsha_string, 2);
+                $parsha = $parsha__exploded[1];
             }
             else if ($item['category'] == 'candles'){
                 $candlelighting_string = $item["title"];
-                $candlelighting = explode(': ', $candlelighting_string, 2)[1];
+                $candlelighting_exploded = explode(': ', $candlelighting_string, 2);
+                $candlelighting = $candlelighting_exploded[1];
             }
         }
         // Now that $parsha and $candlelighting are set:
