@@ -77,7 +77,7 @@ class shabbostimes extends phplistPlugin
           return $content;
         }
         
-        $hebcal_data = get_hebcal_data($zipcode);
+        $hebcal_data = $this->get_hebcal_data($zipcode);
       
         $parsha = NULL;
         $candlelighting = NULL;
@@ -109,7 +109,7 @@ class shabbostimes extends phplistPlugin
    * @return string parsed content
    */
   function parseOutgoingTextMessage($messageid, $content, $destination, $userdata = null) {
-    return replace($content);
+    return $this->replace($content);
   }
 
   /* 
@@ -121,7 +121,7 @@ class shabbostimes extends phplistPlugin
    * @return string parsed content
    */
   function parseOutgoingHTMLMessage($messageid, $content, $destination, $userdata = null) {
-    return replace($content);
+    return $this->replace($content);
   }
 }
 ?>
