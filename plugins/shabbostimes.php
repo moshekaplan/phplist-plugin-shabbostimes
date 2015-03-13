@@ -46,28 +46,50 @@ class shabbostimes extends phplistPlugin
     }
     
     function get_hebcal_data($zipcode){
-      // Retrieves the data from hebcal
-      // http://www.hebcal.com/home/197/shabbat-times-rest-api
-      $hebcal_url = 'http://www.hebcal.com/shabbat/?cfg=json&geo=zip&zip='.$zipcode.'&m=0&a=on';
-      
-      // http://stackoverflow.com/questions/16700960/how-to-use-curl-to-get-json-data-and-decode-the-data
-      // Will dump a beauty json :3
-      //  Initiate curl
-      $ch = curl_init();
-      // Disable SSL verification
-      curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-      // Will return the response, if false it print the response
-      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      // Set the url
-      curl_setopt($ch, CURLOPT_URL,$hebcal_url);
-      // Execute
-      $result=curl_exec($ch);
-      // Closing
-      curl_close($ch);
-      
-      return json_decode($result, true);
-      }
-      
+        // Retrieves the data from hebcal
+        // http://www.hebcal.com/home/197/shabbat-times-rest-api
+        $hebcal_url = 'http://www.hebcal.com/shabbat/?cfg=json&geo=zip&zip='.$zipcode.'&m=0&a=on';
+
+        // http://stackoverflow.com/questions/16700960/how-to-use-curl-to-get-json-data-and-decode-the-data
+        // Will dump a beauty json :3
+        //  Initiate curl
+        $ch = curl_init();
+        // Disable SSL verification
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        // Will return the response, if false it print the response
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        // Set the url
+        curl_setopt($ch, CURLOPT_URL,$hebcal_url);
+        // Execute
+        $result=curl_exec($ch);
+        // Closing
+        curl_close($ch);
+
+        return json_decode($result, true);
+    }
+
+    function parse_hebcaldata($hebcal_data){
+        $parsha = NULL;
+        $candlelighting = NULL;
+        $saturdaydate = NULL;
+        
+        foreach ($hebcal_data["items"] as $item) {
+            if ($item['category'] == 'parashat'){
+                // Get this weeks Parsha and the date
+                $parsha_string = $item["title"];
+                $parsha_exploded = explode('Parshas ', $parsha_string, 2);
+                $parsha = $parsha_exploded[1];
+
+                $saturdaydate = $item["date"];
+            }
+            else if ($item['category'] == 'candles'){
+                $candlelighting_string = $item["title"];
+                $candlelighting_exploded = explode(': ', $candlelighting_string, 2);
+                $candlelighting = $candlelighting_exploded[1];
+            }
+        }
+        return array ($parsha, $candlelighting, $saturdaydate);
+    }
 
 
     function replace($content){
@@ -76,24 +98,54 @@ class shabbostimes extends phplistPlugin
           // Error, but we can't do anything.
           return $content;
         }
-        
-        $hebcal_data = $this->get_hebcal_data($zipcode);
-      
+
+        // If needed, create the table here
+        $shabbos_tablename = "shabbostimes";
+        $shabbos_tablestructure = array(
+                                "zipcode" => array("varchar(5) not null","zipcode"),
+                                "saturdaydate" => array("DATE","Date of Saturday"),
+                                "candlelighting" => array("varchar(80) not null","Time of Candlelighting"),
+                                "parsha" => array("varchar(80) not null","Parsha")
+                            );
+        // Create the table if it doesn't exist
+        $req = Sql_Query(sprintf('select table_name from information_schema.tables where table_schema = "'.$GLOBALS['database_name'].'" AND table_name="%s"', $shabbos_tablename));
+        if (! Sql_Fetch_Row($req)) {
+            Sql_create_Table ($shabbos_tablename,$shabbos_tablestructure);
+        }
+
         $parsha = NULL;
         $candlelighting = NULL;
-        
-        foreach ($hebcal_data["items"] as $item) {
-            if ($item['category'] == 'parashat'){
-                $parsha_string = $item["title"];
-                $parsha__exploded = explode('Parshas ', $parsha_string, 2);
-                $parsha = $parsha__exploded[1];
-            }
-            else if ($item['category'] == 'candles'){
-                $candlelighting_string = $item["title"];
-                $candlelighting_exploded = explode(': ', $candlelighting_string, 2);
-                $candlelighting = $candlelighting_exploded[1];
-            }
+
+        // First see if we already have the info in the DB.
+        $last_saturday = date('Y-m-d', strtotime('last saturday'));
+        $next_saturday = date('Y-m-d', strtotime('saturday'));
+
+        $query_result = Sql_Query(sprintf('SELECT parsha, candlelighting FROM %s
+                            WHERE (zipcode="%s" AND DATE(saturdaydate) BETWEEN DATE("%s") AND DATE("%s") )',
+                            $shabbos_tablename,
+                            $zipcode,
+                            $last_saturday,
+                            $next_saturday));
+        if ($result = Sql_Fetch_Array($query_result)){
+            // Found in DB
+            $parsha = $result[0];
+            $candlelighting = $result[1];
         }
+        else{
+            // Not in the DB. Need to get it from hebcal
+            $hebcal_data = $this->get_hebcal_data($zipcode);
+            list ($parsha, $candlelighting, $saturdaydate) = $this->parse_hebcaldata($hebcal_data);
+            // Store it for next time
+            Sql_Query(sprintf('INSERT INTO %s (zipcode, saturdaydate, parsha, candlelighting)
+                                VALUES
+                                ("%s", "%s", "%s", "%s")',
+                            $shabbos_tablename,
+                            $zipcode,
+                            $saturdaydate,
+                            $parsha,
+                            $candlelighting));
+        }
+
         // Now that $parsha and $candlelighting are set:
         $content = str_replace("[CANDLELIGHTING]", $candlelighting, $content);
         $content = str_replace("[PARSHA]", $parsha, $content);
