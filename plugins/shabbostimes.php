@@ -22,7 +22,7 @@ class shabbostimes extends phplistPlugin
 {
   public $name = "ShabbosTimes plugin for phpList";
   public $coderoot = "shabbostimes/";
-  public $version = "0.3";
+  public $version = "0.4";
   public $description = 'Replaces [CANDLELIGHTING] and [PARSHA] with the candlelighting and parsha';
   public $settings = array(
     "shabbostimes_zipcode" => array (
@@ -36,13 +36,14 @@ class shabbostimes extends phplistPlugin
     ),
   );
   
+  public $CANDLELIGHTING = '[CANDLELIGHTING]';
+  public $PARSHA = '[PARSHA]';
+  public $shabbos_tablename = "shabbostimes";
+
     function shabbostimes(){
         parent::phplistplugin();
         $this->coderoot = dirname(__FILE__).'/shabbostimes/';
-    }
-    
-    function activate(){
-        return true;
+        $this->create_db_table();
     }
     
     function get_hebcal_data($zipcode){
@@ -69,9 +70,9 @@ class shabbostimes extends phplistPlugin
     }
 
     function parse_hebcaldata($hebcal_data){
-        $parsha = NULL;
-        $candlelighting = NULL;
-        $saturdaydate = NULL;
+        $parsha = "Parsha not available";
+        $candlelighting = "Candlelighting not available";
+        $candlelighting_date = NULL;
         
         foreach ($hebcal_data["items"] as $item) {
             if ($item['category'] == 'parashat'){
@@ -79,53 +80,56 @@ class shabbostimes extends phplistPlugin
                 $parsha_string = $item["title"];
                 $parsha_exploded = explode('Parshas ', $parsha_string, 2);
                 $parsha = $parsha_exploded[1];
-
-                $saturdaydate = $item["date"];
             }
             else if ($item['category'] == 'candles'){
                 $candlelighting_string = $item["title"];
                 $candlelighting_exploded = explode(': ', $candlelighting_string, 2);
                 $candlelighting = $candlelighting_exploded[1];
+
+                $candlelighting_date = date('Y-m-d', strtotime($item["date"]));
             }
         }
-        return array ($parsha, $candlelighting, $saturdaydate);
+        return array ($parsha, $candlelighting, $candlelighting_date);
     }
 
+    function create_db_table(){
+        // Create the table if it doesn't exist
+        $shabbos_tablestructure = array(
+                        "zipcode" => array("varchar(5) not null","zipcode"),
+                        "candlelighting_date" => array("DATE","Date of lighting candles"),
+                        "candlelighting" => array("varchar(80) not null","Time of Candlelighting"),
+                        "parsha" => array("varchar(80) not null","Parsha")
+                    );
+
+        $req = Sql_Query(sprintf('select table_name from information_schema.tables where table_schema = "'.$GLOBALS['database_name'].'" AND table_name="%s"', $this->shabbos_tablename));
+        if (! Sql_Fetch_Row($req)) {
+            Sql_create_Table ($this->shabbos_tablename,$shabbos_tablestructure);
+        }
+
+    }
 
     function replace($content){
+        // If the strings to replace aren't in the text, there's nothing to do.
+        if ( (strpos($content, $this->CANDLELIGHTING) === FALSE) && (strpos($content, $this->PARSHA) === FALSE) )
+            return $content;
+
         $zipcode = getConfig('shabbostimes_zipcode');
         if(!$zipcode){
           // Error, but we can't do anything.
           return $content;
         }
 
-        // If needed, create the table here
-        $shabbos_tablename = "shabbostimes";
-        $shabbos_tablestructure = array(
-                                "zipcode" => array("varchar(5) not null","zipcode"),
-                                "saturdaydate" => array("DATE","Date of Saturday"),
-                                "candlelighting" => array("varchar(80) not null","Time of Candlelighting"),
-                                "parsha" => array("varchar(80) not null","Parsha")
-                            );
-        // Create the table if it doesn't exist
-        $req = Sql_Query(sprintf('select table_name from information_schema.tables where table_schema = "'.$GLOBALS['database_name'].'" AND table_name="%s"', $shabbos_tablename));
-        if (! Sql_Fetch_Row($req)) {
-            Sql_create_Table ($shabbos_tablename,$shabbos_tablestructure);
-        }
-
         $parsha = NULL;
         $candlelighting = NULL;
 
         // First see if we already have the info in the DB.
-        $last_saturday = date('Y-m-d', strtotime('last saturday'));
-        $next_saturday = date('Y-m-d', strtotime('saturday'));
+        $today = date('Y-m-d');
 
         $query_result = Sql_Query(sprintf('SELECT parsha, candlelighting FROM %s
-                            WHERE (zipcode="%s" AND DATE(saturdaydate) BETWEEN DATE("%s") AND DATE("%s") )',
-                            $shabbos_tablename,
+                            WHERE (zipcode="%s" AND DATE(candlelighting_date) >= DATE("%s"))',
+                            $this->shabbos_tablename,
                             $zipcode,
-                            $last_saturday,
-                            $next_saturday));
+                            $today));
         if ($result = Sql_Fetch_Array($query_result)){
             // Found in DB
             $parsha = $result[0];
@@ -134,21 +138,21 @@ class shabbostimes extends phplistPlugin
         else{
             // Not in the DB. Need to get it from hebcal
             $hebcal_data = $this->get_hebcal_data($zipcode);
-            list ($parsha, $candlelighting, $saturdaydate) = $this->parse_hebcaldata($hebcal_data);
+            list ($parsha, $candlelighting, $candlelighting_date) = $this->parse_hebcaldata($hebcal_data);
             // Store it for next time
-            Sql_Query(sprintf('INSERT INTO %s (zipcode, saturdaydate, parsha, candlelighting)
+            Sql_Query(sprintf('INSERT INTO %s (zipcode, candlelighting_date, parsha, candlelighting)
                                 VALUES
                                 ("%s", "%s", "%s", "%s")',
-                            $shabbos_tablename,
+                            $this->shabbos_tablename,
                             $zipcode,
-                            $saturdaydate,
+                            $candlelighting_date,
                             $parsha,
                             $candlelighting));
         }
 
         // Now that $parsha and $candlelighting are set:
-        $content = str_replace("[CANDLELIGHTING]", $candlelighting, $content);
-        $content = str_replace("[PARSHA]", $parsha, $content);
+        $content = str_replace($this->CANDLELIGHTING, $candlelighting, $content);
+        $content = str_replace($this->PARSHA, $parsha, $content);
         return $content;
     }
     
