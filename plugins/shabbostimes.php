@@ -22,7 +22,7 @@ class shabbostimes extends phplistPlugin
 {
   public $name = "ShabbosTimes plugin for phpList";
   public $coderoot = "shabbostimes/";
-  public $version = "0.4";
+  public $version = "1.0";
   public $description = 'Replaces [CANDLELIGHTING] and [PARSHA] with the candlelighting and parsha';
   public $settings = array(
     "shabbostimes_zipcode" => array (
